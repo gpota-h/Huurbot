@@ -47,6 +47,7 @@ b4ed3796c8eb9d9e06e8f01bf71915162e129059	vbt	2026-08-10T06:37:54.450112+00:00	ht
 bef34398dbb5fdad1ec65f0c179e1966ee00b3fe	ikwilhuren	2026-08-10T06:37:39.302545+00:00	https://ikwilhuren.nu/object/amsterdam-1062ks-1132-koningin-wilhelminaplein-7d65dbc45fa01d53aae5055298929d15/
 c3660ee989c8292facd4cfcc938b512e2f7c721e	vbt	2026-08-10T06:37:59.637262+00:00	https://vbtverhuurmakelaars.nl/woning/amsterdam-fregelaan-47
 c6dcd79636db447b0f363707762407f1c1d6f38c	ikwilhuren	2026-08-10T06:37:39.298727+00:00	https://ikwilhuren.nu/object/amsterdam-1031kp-9-bercylaan-8301a4edc59d267a3ec588200361b3bb/
+cc38ec939545f9ed83a5649aeabdfb321f79dd47	vesteda	2026-08-10T10:46:28.983594+00:00	https://www.vesteda.com/nl/huurwoningen-amsterdam/de-enter
 d2b0f21738816d76ca69fd71c37f50947340d1bc	ikwilhuren	2026-08-10T06:37:39.300511+00:00	https://ikwilhuren.nu/object/amsterdam-1018lg-262-voc-kade-3981834d425c01ed121729c3274ebc58/
 d94548a158ed202d6f60b77f11cc3ecab7ff7dd5	vbt	2026-08-10T06:37:54.447414+00:00	https://vbtverhuurmakelaars.nl/woning/eindhoven-anton-philipslaan-71
 d9be85a8749f888a0e5a33c23fa09a406641782e	ikwilhuren	2026-08-10T06:37:39.301873+00:00	https://ikwilhuren.nu/object/amsterdam-1051ml-96-wichersstraat-c4874cdbf7b87fd70405e4c73e253fd2/
