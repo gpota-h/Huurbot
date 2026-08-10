@@ -1,0 +1,93 @@
+name: huurbot
+
+# Runs the rental check on GitHub's servers, so it keeps working when your
+# laptop is off, asleep, or broken.
+#
+# SETUP (all doable from a phone):
+#   1. Create a PUBLIC repo. Actions minutes are free and unlimited on public
+#      repos; a private one gets 2000 min/month and this burns past that.
+#      Nothing secret is committed -- the password and your email address live
+#      in Secrets, and search URLs aren't sensitive.
+#   2. Upload: huurbot.py, config.yaml, requirements.txt, this file.
+#   3. Settings > Secrets and variables > Actions > New repository secret:
+#         SMTP_USERNAME    your.name@gmail.com
+#         SMTP_PASSWORD    your 16-char Gmail app password
+#         MAIL_TO          where alerts should go
+#   4. Actions tab > huurbot > "Run workflow" > mode: seed  <-- DO THIS FIRST.
+#      Seeding marks everything currently listed as already seen. Skip it and
+#      your first email contains every listing on all five sites.
+#   5. After that it runs itself every 10 minutes.
+#
+# CAVEATS, honestly:
+#   - GitHub's cron is best-effort. */10 often means every 10-25 minutes, worse
+#     when their queues are busy. Fine for rental alerts; not precise.
+#   - Scheduled workflows are auto-disabled after 60 days of repo inactivity.
+#     GitHub emails you first; any commit re-enables them.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'seed = mark everything as seen without emailing'
+        type: choice
+        options: [check, seed]
+        default: check
+
+permissions:
+  contents: write          # to commit the seen-listings state back
+
+concurrency:
+  group: huurbot           # never let two runs overlap and fight over the push
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Run
+        env:
+          HUURBOT_SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          HUURBOT_SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          HUURBOT_MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: |
+          if [ "${{ inputs.mode }}" = "seed" ]; then
+            python huurbot.py --seed --state-file seen.txt
+          else
+            python huurbot.py --once --state-file seen.txt
+          fi
+
+      - name: Remember what we've seen
+        # seen.txt is plain sorted text, so git stores only the new lines.
+        # Committing the SQLite file instead would bloat the repo.
+        run: |
+          [ -f seen.txt ] || { echo "no state file, nothing to save"; exit 0; }
+          git config user.name  "huurbot"
+          git config user.email "huurbot@users.noreply.github.com"
+          git add seen.txt
+          git diff --staged --quiet && { echo "nothing new"; exit 0; }
+          git commit -m "seen listings $(date -u +%Y-%m-%dT%H:%M)"
+          for i in 1 2 3; do
+            git pull --rebase --autostash && git push && exit 0
+            echo "push attempt $i failed, retrying"; sleep 5
+          done
+          echo "could not push state"; exit 1
+
+      - name: Upload log if something went wrong
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: huurbot-log
+          path: huurbot.log
+          if-no-files-found: ignore

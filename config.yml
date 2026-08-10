@@ -1,0 +1,96 @@
+# huurbot config -- GitHub Actions version.
+#
+# Safe to keep in a PUBLIC repo: there is no password and no email address in
+# here. Both come from repository Secrets at run time. Search URLs and price
+# filters aren't sensitive.
+
+interval_minutes: 10        # only used when running locally; CI uses the cron
+
+sites:
+  # Biggest portal. Newest-first is already the default sort, and it paginates
+  # as /page-2, which is what {page} expands to.
+  - name: pararius
+    adapter: pararius
+    enabled: true
+    pages: 2
+    search_urls:
+      - "https://www.pararius.com/apartments/amsterdam/page-{page}"
+
+  - name: huurwoningen
+    adapter: huurwoningen
+    enabled: true
+    search_urls:
+      - "https://www.huurwoningen.nl/in/amsterdam/?price=0-2000&sort=recent"
+
+  # MVGM's own portal (.nu, not .nl). Direct landlord, no agency fee.
+  # Filters here live in the session, not the URL -- only the region and page
+  # work in the address bar, so price is handled by the filters below.
+  - name: ikwilhuren
+    adapter: ikwilhuren
+    enabled: true
+    pages: 2
+    search_urls:
+      - "https://ikwilhuren.nu/aanbod/amsterdam/"
+
+  # Vesteda's per-home list is JavaScript-rendered, so this watches the
+  # per-BUILDING list instead: one alert per building when its count or price
+  # range changes. Click through to see the individual homes.
+  - name: vesteda
+    adapter: vesteda
+    enabled: true
+    search_urls:
+      - "https://www.vesteda.com/nl/huurwoningen-amsterdam"
+
+  # Richest data of the lot, including how many people have already applied.
+  # Use /woningen -- /huurwoningen-amsterdam is a marketing page with no
+  # listings on it. Nationwide, so only_cities does the trimming.
+  - name: vbt
+    adapter: vbt
+    enabled: true
+    pages: 3
+    search_urls:
+      - "https://vbtverhuurmakelaars.nl/woningen/{page}"
+
+  # Off by default: JavaScript-rendered plus real bot protection.
+  - name: funda
+    adapter: funda
+    enabled: false
+    search_urls:
+      - "https://www.funda.nl/zoeken/huur?selected_area=%5B%22amsterdam%22%5D"
+
+filters:
+  min_price: 0
+  max_price: 2000
+  min_size_m2: 45
+  min_rooms: 2
+
+  # Several of these sites search by radius and return neighbouring towns.
+  # Add amstelveen or diemen if you'd consider them -- both are a short ride in
+  # and noticeably cheaper.
+  only_cities:
+    - amsterdam
+
+  exclude_keywords:
+    - "anti-kraak"
+    - "antikraak"
+    - "tijdelijk"
+    - "studentenwoning"
+    - "kamer in"
+
+  require_any_keywords: []
+
+  # Draw with area_picker.html and paste the result here. A listing passes if
+  # it's inside ANY shape. Anything that can't be located is let through, so a
+  # geocoder outage can't silently stop your alerts.
+  # areas:
+  #   - - [52.39000, 4.87500]
+  #     - [52.39000, 4.92000]
+  #     - [52.35500, 4.92000]
+  #     - [52.35500, 4.87500]
+
+email:
+  smtp_host: smtp.gmail.com
+  smtp_port: 587
+  subject_prefix: "[huurbot]"
+  # username, to_addresses and password deliberately absent -- they come from
+  # the SMTP_USERNAME, MAIL_TO and SMTP_PASSWORD repository secrets.
