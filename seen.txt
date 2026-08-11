@@ -64,6 +64,7 @@ dbe1f2193be113bbed3c476628b227543be72d9f	vbt	2026-08-10T06:37:51.122618+00:00	ht
 dbf1d6a58020a1872dce7cc92ed89379e8bff8da	vesteda	2026-08-10T06:37:46.979101+00:00	https://www.vesteda.com/nl/huurwoningen-amsterdam/detroit
 e2c10e58c60ec4bdaacd5aff8761af76717593a8	vbt	2026-08-10T06:37:51.125651+00:00	https://vbtverhuurmakelaars.nl/woning/delft-maria-vincentiastraat-127
 eb9b0c8071f603199ff964102f32c0a9fbf903b1	vbt	2026-08-10T06:37:59.627511+00:00	https://vbtverhuurmakelaars.nl/woning/diemen-oude-waelweg-56
+f1dcec031640742ac9491c95ee409e7af9cae33e	vesteda	2026-08-11T04:51:34.655941+00:00	https://www.vesteda.com/nl/huurwoningen-amsterdam/detroit
 f34e71f48e9965ed6d651c461fc354043a1e4636	ikwilhuren	2026-08-10T06:37:43.395775+00:00	https://ikwilhuren.nu/object/amsterdam-1043eg-287-lutonhof-5e9ea9fe960ff86bcad0bceae6a945d1/
 f7145fad06b85db3c94aa9f6e9ff75f24908f784	vbt	2026-08-10T06:37:51.123421+00:00	https://vbtverhuurmakelaars.nl/woning/haarlem-amerikaweg-112
 ffdedb498812286ff4e2d6d2823fcd9367c1a49f	vbt	2026-08-10T06:37:59.634347+00:00	https://vbtverhuurmakelaars.nl/woning/amsterdam-pierre-lallementstraat-866
