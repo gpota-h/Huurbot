@@ -39,6 +39,7 @@
 53f06e689f20bdd4247d4380e774cca507ec95f8	ikwilhuren	2026-08-11T14:46:43.135486+00:00	https://ikwilhuren.nu/object/amsterdam-1033sn-14-c5-mt-lincolnweg-eedd560250c33e4c151994c0c17c0c89/
 550b637cc775316ec067835964c15a493f457447	vbt	2026-08-12T18:40:14.917036+00:00	https://vbtverhuurmakelaars.nl/woning/woerden-kopermolen-1
 564dd78809e71deaefd7305701ac922e2ae46074	vbt	2026-08-11T20:25:29.227761+00:00	https://vbtverhuurmakelaars.nl/woning/s-gravenhage-carolina-van-nassaustraat-97
+5aa60198bd5e6b18c42eb05993c399aeecb2a68b	vesteda	2026-08-13T12:06:52.335588+00:00	https://www.vesteda.com/nl/huurwoningen-amsterdam/churchilllaan-amsterdam
 5e2d6942936bed2b6ab1c8358ffedddc704ff55c	vbt	2026-08-11T20:25:34.136621+00:00	https://vbtverhuurmakelaars.nl/woning/amsterdam-pierre-lallementstraat-710
 62bb573eb559910581ea90ba0cec6ba7f494a722	vbt	2026-08-12T18:40:14.911485+00:00	https://vbtverhuurmakelaars.nl/woning/pijnacker-floralaan-91
 65d28aba26282c9f4f8cd325390cbd856f2ab533	vbt	2026-08-12T18:40:14.915595+00:00	https://vbtverhuurmakelaars.nl/woning/diemen-jan-wolkerslaan-287
