@@ -61,6 +61,7 @@
 84dde71dccded350c60e0db2e0d179457caa39c0	ikwilhuren	2026-08-11T08:32:13.815412+00:00	https://ikwilhuren.nu/object/amsterdam-1013jz-5-haarlemmerdijk-c02f0b36ace0eb855d2dd49954db4df7/
 8541b02f0dd18ed0d5b446f56af231e0bb583c9c	ikwilhuren	2026-08-10T14:40:24.021582+00:00	https://ikwilhuren.nu/object/amsterdam-1082mt-514-george-gershwinlaan-913ceb7f721c377d8189edf56e1e9af4/
 85be685827b1d6155dd3453167d60dd124a54a2c	ikwilhuren	2026-08-10T06:37:39.301145+00:00	https://ikwilhuren.nu/object/amsterdam-1096dt-159-lindenhoeveweg-c69f6f97a5a4370d0f3319a045584f99/
+86cbe1f5d82225c546f6bb987ae6e868cc5dd4a0	vbt	2026-08-13T18:41:04.093235+00:00	https://vbtverhuurmakelaars.nl/woning/s-gravenhage-president-kennedylaan-112g
 86f494a911ed71b8dc9e9c06b13a8419decbdfe9	vbt	2026-08-10T06:37:59.635097+00:00	https://vbtverhuurmakelaars.nl/woning/amsterdam-stephensonstraat-18n
 876b7491a03852b9fa7da8ac754649d78e511d97	ikwilhuren	2026-08-11T08:32:13.816958+00:00	https://ikwilhuren.nu/object/amsterdam-1031hm-213-asterweg-2a2a5377bbec5b32c88f28dced41408a/
 88f7ebd3689a705a8ad35722ca5996356cf83607	vbt	2026-08-12T18:40:14.910723+00:00	https://vbtverhuurmakelaars.nl/woning/maastricht-vijfharingenstraat-15c20
