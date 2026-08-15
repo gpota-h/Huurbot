@@ -30,9 +30,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'seed = mark everything as seen without emailing'
+        description: 'check = normal run | seed = mark all as seen, no email | test-email = send one test email'
         type: choice
-        options: [check, seed]
+        options: [check, seed, test-email]
         default: check
 
 permissions:
@@ -62,13 +62,14 @@ jobs:
           HUURBOT_SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           HUURBOT_MAIL_TO: ${{ secrets.MAIL_TO }}
         run: |
-          if [ "${{ inputs.mode }}" = "seed" ]; then
-            python huurbot.py --seed --state-file seen.txt
-          else
-            python huurbot.py --once --state-file seen.txt
-          fi
+          case "${{ inputs.mode }}" in
+            seed)       python huurbot.py --seed --state-file seen.txt ;;
+            test-email) python huurbot.py --test-email ;;
+            *)          python huurbot.py --once --state-file seen.txt ;;
+          esac
 
       - name: Remember what we've seen
+        if: inputs.mode != 'test-email'
         # seen.txt is plain sorted text, so git stores only the new lines.
         # Committing the SQLite file instead would bloat the repo.
         run: |
