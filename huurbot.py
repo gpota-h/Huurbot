@@ -28,7 +28,7 @@ import sqlite3
 import sys
 import time
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Iterable, Optional
@@ -769,14 +769,32 @@ class Store:
     # binary: every rewrite stores a whole new copy and the repo balloons.
     # A sorted text file appends a line per listing and git stores just that.
 
-    def export_keys(self, path: Path) -> int:
+    def export_keys(self, path: Path, prune_days: int = 90) -> int:
+        """
+        Write the seen-listings state.
+
+        Entries older than prune_days are dropped, otherwise the file grows
+        forever -- and with a check every few minutes round the clock, that
+        means a steadily bloating repo. Anything that old is long gone from the
+        sites anyway, so it can't re-alert. Keep the window well above how long
+        a listing actually stays up (weeks, not months) or pruned-but-still-live
+        listings would be re-announced.
+        """
+        cutoff = ""
+        if prune_days > 0:
+            cutoff = (datetime.now(timezone.utc)
+                      - timedelta(days=prune_days)).isoformat()
         rows = self.conn.execute(
             "SELECT key, site, first_seen, url FROM seen ORDER BY key").fetchall()
+        kept = [r for r in rows if not cutoff or not r[2] or r[2] >= cutoff]
         with open(path, "w", encoding="utf-8") as fh:
             fh.write("# huurbot seen-listings state. One line per listing.\n")
-            for r in rows:
+            for r in kept:
                 fh.write("\t".join(str(x or "") for x in r) + "\n")
-        return len(rows)
+        dropped = len(rows) - len(kept)
+        if dropped:
+            log.info("Pruned %d entries older than %d days", dropped, prune_days)
+        return len(kept)
 
     def import_keys(self, path: Path) -> int:
         if not path.exists():
@@ -1023,6 +1041,10 @@ def main() -> None:
     ap.add_argument("--test-email", action="store_true", help="send a test email and exit")
     ap.add_argument("--check-config", action="store_true", help="validate config and exit")
     ap.add_argument("--dump", action="store_true", help="save fetched HTML into debug/")
+    ap.add_argument("--prune-days", type=int, default=90, metavar="N",
+                    help="drop state entries older than N days (0 = keep all). "
+                         "Must exceed how long a listing stays live, or old-but-"
+                         "still-listed homes get re-announced. Default 90.")
     ap.add_argument("--state-file", metavar="PATH",
                     help="load/save seen listings from a text file (for CI, where "
                          "the filesystem is wiped between runs)")
@@ -1077,7 +1099,7 @@ def main() -> None:
     if args.seed:
         found = run_check(cfg, store, notify=False, dump=args.dump)
         if state:
-            print(f"Wrote {store.export_keys(state)} entries to {state}")
+            print(f"Wrote {store.export_keys(state, args.prune_days)} entries to {state}")
         print(f"Seeded. {store.count()} listings marked as already seen. "
               f"From now on you'll only hear about genuinely new ones.")
         return
@@ -1085,7 +1107,7 @@ def main() -> None:
     if args.once:
         hits = run_check(cfg, store, notify=True, dump=args.dump)
         if state:
-            store.export_keys(state)
+            store.export_keys(state, args.prune_days)
         print(f"Done. {len(hits)} new listing(s).")
         return
 
