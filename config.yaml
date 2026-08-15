@@ -1,96 +1,142 @@
-# huurbot config -- GitHub Actions version.
+name: huurbot
+
+# Runs the rental check on GitHub's servers, so it works when your laptop is
+# off, asleep, or broken.
 #
-# Safe to keep in a PUBLIC repo: there is no password and no email address in
-# here. Both come from repository Secrets at run time. Search URLs and price
-# filters aren't sensitive.
+# WHY THIS LOOPS INTERNALLY
+# GitHub's cron is best-effort and heavily deprioritises frequent schedules on
+# low-activity repos -- ask for */6 and you'll typically get one run an hour.
+# So instead of relying on the schedule, each run stays alive for ~5h40m and
+# checks every CHECK_EVERY_MIN minutes itself. 6h is GitHub's hard per-job
+# ceiling, so this is as long as one run can legally last.
+#
+# The hourly cron is a watchdog. Combined with the concurrency group it gives:
+#   - seamless handoff: the queued run starts the instant the old one ends
+#   - self-healing: if a run dies, the queue takes over within the hour
+#
+# Actions minutes are free and unlimited on PUBLIC repos, so the sleeping time
+# costs nothing. On a private repo this would burn a month's quota in ~3 days.
+# Keep the repo public.
+#
+# SETUP (all doable from a phone):
+#   1. PUBLIC repo. See note above.
+#   2. Upload: huurbot.py, config.yaml, requirements.txt, this file.
+#   3. Settings > Secrets and variables > Actions:
+#         SMTP_USERNAME    your.name@gmail.com
+#         SMTP_PASSWORD    16-char Gmail app password (NOT your login password)
+#         MAIL_TO          where alerts go; comma-separate for several
+#   4. Actions > huurbot > Run workflow > mode: seed   <-- DO THIS FIRST,
+#      or your first email contains every listing on every site.
+#
+# Modes: check (normal) | seed (mark all seen, no email) | test-email
 
-interval_minutes: 10        # only used when running locally; CI uses the cron
+on:
+  schedule:
+    - cron: '3 * * * *'      # Hourly, but each run lasts ~5h40m -- so this is a
+                             # WATCHDOG, not the real schedule. While a run is
+                             # alive the concurrency group holds the new one in
+                             # the queue, and it starts the moment the old one
+                             # ends (seamless handoff, no gap). If a run dies,
+                             # the queued one takes over within the hour instead
+                             # of leaving you blind until the next 6h slot.
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'check = run and loop | seed = mark all as seen | test-email = send one test'
+        type: choice
+        options: [check, seed, test-email]
+        default: check
 
-sites:
-  # Biggest portal. Newest-first is already the default sort, and it paginates
-  # as /page-2, which is what {page} expands to.
-  - name: pararius
-    adapter: pararius
-    enabled: true
-    pages: 2
-    search_urls:
-      - "https://www.pararius.com/apartments/amsterdam/page-{page}"
+permissions:
+  contents: write
 
-  - name: huurwoningen
-    adapter: huurwoningen
-    enabled: true
-    search_urls:
-      - "https://www.huurwoningen.nl/in/amsterdam/?price=0-2000&sort=recent"
+concurrency:
+  group: huurbot             # never let two runs fight over the state commit
+  cancel-in-progress: false
 
-  # MVGM's own portal (.nu, not .nl). Direct landlord, no agency fee.
-  # Filters here live in the session, not the URL -- only the region and page
-  # work in the address bar, so price is handled by the filters below.
-  - name: ikwilhuren
-    adapter: ikwilhuren
-    enabled: true
-    pages: 2
-    search_urls:
-      - "https://ikwilhuren.nu/aanbod/amsterdam/"
+env:
+  CHECK_EVERY_MIN: 6         # how often to check within a run
+  RUN_FOR_MIN: 340           # 5h40m. GitHub kills any job at 6h, so stop short.
 
-  # Vesteda's per-home list is JavaScript-rendered, so this watches the
-  # per-BUILDING list instead: one alert per building when its count or price
-  # range changes. Click through to see the individual homes.
-  - name: vesteda
-    adapter: vesteda
-    enabled: true
-    search_urls:
-      - "https://www.vesteda.com/nl/huurwoningen-amsterdam"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350       # under GitHub's 6h hard ceiling, above RUN_FOR_MIN
+                               # so a slow final check finishes instead of being killed
+    steps:
+      - uses: actions/checkout@v4
 
-  # Richest data of the lot, including how many people have already applied.
-  # Use /woningen -- /huurwoningen-amsterdam is a marketing page with no
-  # listings on it. Nationwide, so only_cities does the trimming.
-  - name: vbt
-    adapter: vbt
-    enabled: true
-    pages: 3
-    search_urls:
-      - "https://vbtverhuurmakelaars.nl/woningen/{page}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
 
-  # Off by default: JavaScript-rendered plus real bot protection.
-  - name: funda
-    adapter: funda
-    enabled: false
-    search_urls:
-      - "https://www.funda.nl/zoeken/huur?selected_area=%5B%22amsterdam%22%5D"
+      - run: pip install -r requirements.txt
 
-filters:
-  min_price: 0
-  max_price: 2000
-  min_size_m2: 45
-  min_rooms: 2
+      - name: Run
+        env:
+          HUURBOT_SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          HUURBOT_SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          HUURBOT_MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: |
+          set -uo pipefail
+          git config user.name  "huurbot"
+          git config user.email "huurbot@users.noreply.github.com"
 
-  # Several of these sites search by radius and return neighbouring towns.
-  # Add amstelveen or diemen if you'd consider them -- both are a short ride in
-  # and noticeably cheaper.
-  only_cities:
-    - amsterdam
+          # Commit the seen-listings state. Called after every check, so a
+          # cancelled run never loses more than one round of alerts.
+          save_state() {
+            [ -f seen.txt ] || return 0
+            git add seen.txt || return 0
+            git diff --staged --quiet && return 0
+            git commit -q -m "seen listings $(date -u +%Y-%m-%dT%H:%M)" || return 0
+            for i in 1 2 3; do
+              git pull -q --rebase --autostash && git push -q && return 0
+              echo "  push attempt $i failed, retrying"; sleep 5
+            done
+            echo "  WARNING: could not push state; next run may re-alert"
+          }
 
-  exclude_keywords:
-    - "anti-kraak"
-    - "antikraak"
-    - "tijdelijk"
-    - "studentenwoning"
-    - "kamer in"
+          case "${{ inputs.mode }}" in
+            seed)
+              python huurbot.py --seed --state-file seen.txt
+              save_state
+              exit 0 ;;
+            test-email)
+              python huurbot.py --test-email
+              exit 0 ;;
+          esac
 
-  require_any_keywords: []
+          # ---- normal mode: check repeatedly until our hour is nearly up ----
+          deadline=$(( SECONDS + RUN_FOR_MIN * 60 ))
+          interval=$(( CHECK_EVERY_MIN * 60 ))
+          round=1
+          while :; do
+            started=$SECONDS
+            echo "::group::check $round  ($(date -u +%H:%M:%S) UTC)"
+            python huurbot.py --once --state-file seen.txt || echo "  check failed, continuing"
+            save_state
+            echo "::endgroup::"
 
-  # Draw with area_picker.html and paste the result here. A listing passes if
-  # it's inside ANY shape. Anything that can't be located is let through, so a
-  # geocoder outage can't silently stop your alerts.
-  # areas:
-  #   - - [52.39000, 4.87500]
-  #     - [52.39000, 4.92000]
-  #     - [52.35500, 4.92000]
-  #     - [52.35500, 4.87500]
+            # Sleep the REMAINDER of the interval, not a full interval on top of
+            # however long the check took -- otherwise the real cadence drifts
+            # out to 8+ minutes.
+            elapsed=$(( SECONDS - started ))
+            nap=$(( interval - elapsed ))
+            [ "$nap" -lt 30 ] && nap=30
 
-email:
-  smtp_host: smtp.gmail.com
-  smtp_port: 587
-  subject_prefix: "[huurbot]"
-  # username, to_addresses and password deliberately absent -- they come from
-  # the SMTP_USERNAME, MAIL_TO and SMTP_PASSWORD repository secrets.
+            remaining=$(( deadline - SECONDS ))
+            [ "$remaining" -le "$nap" ] && break
+            echo "check took ${elapsed}s; sleeping ${nap}s  (${remaining}s left this run)"
+            sleep "$nap"
+            round=$(( round + 1 ))
+          done
+          echo "did $round checks this run; next run starts within the hour"
+
+      - name: Upload log if something failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: huurbot-log
+          path: huurbot.log
+          if-no-files-found: ignore
