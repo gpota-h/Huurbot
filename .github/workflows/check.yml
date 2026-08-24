@@ -27,9 +27,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'check | seed | test-email'
+        description: 'check | seed | test-email | status (health report now)'
         type: choice
-        options: [check, seed, test-email]
+        options: [check, seed, test-email, status]
         default: check
 
 permissions:
@@ -51,6 +51,28 @@ jobs:
           python-version: '3.12'
           cache: pip
 
+      - name: Check the files are all there
+        # Turns a cryptic pip/Python error into a plain message. Uploading from
+        # a phone often renames or converts files, which is easy to miss.
+        run: |
+          fail=0
+          for f in huurbot.py config.yaml requirements.txt; do
+            if [ -f "$f" ]; then
+              echo "ok      $f"
+            else
+              echo "MISSING $f"; fail=1
+              case "$f" in
+                requirements.txt) ls requirements.* 2>/dev/null && echo "        ^ rename that to requirements.txt (delete and recreate if it is a .pdf)" ;;
+                config.yaml)      ls config.* 2>/dev/null && echo "        ^ rename config.yml to config.yaml (the script wants .yaml)" ;;
+              esac
+            fi
+          done
+          if [ "$fail" = "1" ]; then
+            echo ""
+            echo "Files actually in the repo:"; ls -1
+            exit 1
+          fi
+
       - run: pip install -r requirements.txt
 
       - name: Run
@@ -61,6 +83,12 @@ jobs:
           MODE: ${{ inputs.mode || 'check' }}     # inputs is empty on cron runs
           CHECK_EVERY_MIN: '6'
           RUN_FOR_MIN: '50'
+          # Send a "still running" status email at the start of a run. It lists
+          # what each site returned, so you can tell "working, nothing new" from
+          # "silently broken". Every run = ~24 emails/day, which gets noisy fast.
+          # Set to a comma-separated list of UTC hours to limit it, e.g. '7,19'
+          # for twice a day. 'always' = every run. 'never' = off.
+          STATUS_EMAIL_HOURS: '7,19'
         run: |
           set -uo pipefail
           git config user.name  "huurbot"
@@ -81,7 +109,25 @@ jobs:
           case "$MODE" in
             seed)       python huurbot.py --seed --state-file seen.txt; save_state; exit 0 ;;
             test-email) python huurbot.py --test-email; exit 0 ;;
+            status)     python huurbot.py --status --state-file seen.txt; save_state; exit 0 ;;
           esac
+
+          # Proof-of-life email, if this hour is on the list
+          hour=$(date -u +%-H)
+          send_status=0
+          case "$STATUS_EMAIL_HOURS" in
+            never)  send_status=0 ;;
+            always) send_status=1 ;;
+            *)      for h in ${STATUS_EMAIL_HOURS//,/ }; do
+                      [ "$h" = "$hour" ] && send_status=1
+                    done ;;
+          esac
+          if [ "$send_status" = "1" ]; then
+            echo "::group::status email"
+            python huurbot.py --status --state-file seen.txt || echo "status email failed"
+            save_state
+            echo "::endgroup::"
+          fi
 
           deadline=$(( SECONDS + RUN_FOR_MIN * 60 ))
           interval=$(( CHECK_EVERY_MIN * 60 ))
