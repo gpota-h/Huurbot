@@ -853,6 +853,65 @@ def build_email_html(listings: list[Listing]) -> str:
       </div></body></html>"""
 
 
+def build_status_html(stats: dict, hits: list[Listing], store: "Store",
+                      cfg: dict) -> str:
+    """
+    Proof-of-life email. The point is to distinguish 'working, nothing new'
+    from 'silently broken' -- so it reports what each site actually returned,
+    not just that the job started.
+    """
+    rows = []
+    for site, d in sorted(stats.items()):
+        broken = d["parsed"] == 0
+        colour = "#C3362B" if broken else "#1F7A4D"
+        note = d["problem"] if broken else (
+            f"{d['new']} new, {d['kept']} passed filters" if d["new"] else "nothing new")
+        rows.append(f"""
+        <tr>
+          <td style="padding:7px 10px;font-weight:600">{html.escape(site)}</td>
+          <td style="padding:7px 10px;text-align:right;color:{colour};font-weight:600">
+            {d['parsed']}</td>
+          <td style="padding:7px 10px;color:#555;font-size:13px">{html.escape(note)}</td>
+        </tr>""")
+
+    new_block = ""
+    if hits:
+        items = "".join(
+            f'<li><a href="{html.escape(l.url)}">{html.escape(l.title)}</a> '
+            f'&mdash; {html.escape(l.summary())}</li>' for l in hits)
+        new_block = (f'<p style="margin-top:16px"><b>{len(hits)} new listing'
+                     f'{"s" if len(hits) != 1 else ""} this check:</b></p>'
+                     f'<ul style="font-size:14px">{items}</ul>')
+
+    f = cfg.get("filters", {})
+    filt = ", ".join(x for x in [
+        f"max EUR {f['max_price']}" if f.get("max_price") else "",
+        f"min {f['min_size_m2']} m2" if f.get("min_size_m2") else "",
+        f"min {f['min_rooms']} rooms" if f.get("min_rooms") else "",
+        ", ".join(f.get("only_cities") or []),
+    ] if x)
+
+    total = sum(d["parsed"] for d in stats.values())
+    healthy = sum(1 for d in stats.values() if d["parsed"] > 0)
+    return f"""<html><body style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;
+        background:#f5f5f5;padding:16px;margin:0">
+      <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:10px;padding:18px">
+        <h2 style="margin:0 0 4px;font-size:17px">huurbot is running</h2>
+        <p style="margin:0 0 14px;color:#666;font-size:13px">
+          {datetime.now().strftime('%a %d %b, %H:%M')} &middot;
+          {healthy} of {len(stats)} sites responding &middot; {total} listings seen this check
+        </p>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;
+                      border-top:1px solid #e5e5e5">{''.join(rows)}</table>
+        {new_block}
+        <p style="margin-top:16px;color:#888;font-size:12px">
+          Filters: {html.escape(filt) or 'none'}<br>
+          {store.count()} listings known in total. A site showing 0 is broken and
+          needs its URL checked; everything else is working.
+        </p>
+      </div></body></html>"""
+
+
 def send_email(cfg: dict, subject: str, body_html: str, body_text: str) -> None:
     e = cfg["email"]
     # Environment wins over the config file, so the same repo can run in CI
@@ -952,7 +1011,12 @@ def diagnose_empty(page: str, site_cfg: dict) -> str:
             f"the markup probably changed. Run with --dump and check the adapter.")
 
 
-def run_check(cfg: dict, store: Store, notify: bool = True, dump: bool = False) -> list[Listing]:
+def run_check(cfg: dict, store: Store, notify: bool = True, dump: bool = False,
+              stats: Optional[dict] = None) -> list[Listing]:
+    """
+    Check every enabled site. If `stats` is given it's filled with per-site
+    results, which the status email uses to report what each site returned.
+    """
     new_hits: list[Listing] = []
     filters = cfg.get("filters", {})
 
@@ -962,9 +1026,13 @@ def run_check(cfg: dict, store: Store, notify: bool = True, dump: bool = False) 
         name = site_cfg["name"]
         pages = int(site_cfg.get("pages", 1))
         urls = [u for base in site_cfg["search_urls"] for u in paginate(base, pages)]
+        if stats is not None and name not in stats:
+            stats[name] = {"parsed": 0, "new": 0, "kept": 0, "problem": ""}
         for url in urls:
             page = fetch(url)
             if page is None:
+                if stats is not None:
+                    stats[name]["problem"] = "could not fetch the page (blocked, or bad URL)"
                 continue
 
             if dump:
@@ -975,9 +1043,13 @@ def run_check(cfg: dict, store: Store, notify: bool = True, dump: bool = False) 
 
             listings = parse_page(site_cfg, url, page)
             log.info("%-14s %3d listings parsed", name, len(listings))
+            if stats is not None:
+                stats[name]["parsed"] += len(listings)
             if not listings:
-                log.warning("%s returned 0 listings from %s\n    -> %s",
-                            name, url, diagnose_empty(page, site_cfg))
+                why = diagnose_empty(page, site_cfg)
+                log.warning("%s returned 0 listings from %s\n    -> %s", name, url, why)
+                if stats is not None and not stats[name]["problem"]:
+                    stats[name]["problem"] = why
 
             for listing in listings:
                 if not store.is_new(listing):
@@ -988,9 +1060,13 @@ def run_check(cfg: dict, store: Store, notify: bool = True, dump: bool = False) 
                     # that already cleared the cheap filters.
                     ok, reason = check_area(listing, filters.get("areas") or [], store)
                 store.record(listing, notified=ok and notify)
+                if stats is not None:
+                    stats[name]["new"] += 1
                 if not ok:
                     log.debug("filtered out %s (%s)", listing.url, reason)
                     continue
+                if stats is not None:
+                    stats[name]["kept"] += 1
                 new_hits.append(listing)
 
             time.sleep(random.uniform(2, 5))  # be polite between requests
@@ -1041,6 +1117,10 @@ def main() -> None:
     ap.add_argument("--test-email", action="store_true", help="send a test email and exit")
     ap.add_argument("--check-config", action="store_true", help="validate config and exit")
     ap.add_argument("--dump", action="store_true", help="save fetched HTML into debug/")
+    ap.add_argument("--status", action="store_true",
+                    help="run one check and ALWAYS email a status report, even if "
+                         "nothing new. Proof the job is alive and each site is "
+                         "still parsing. Used at the start of each CI run.")
     ap.add_argument("--prune-days", type=int, default=90, metavar="N",
                     help="drop state entries older than N days (0 = keep all). "
                          "Must exceed how long a listing stays live, or old-but-"
@@ -1102,6 +1182,27 @@ def main() -> None:
             print(f"Wrote {store.export_keys(state, args.prune_days)} entries to {state}")
         print(f"Seeded. {store.count()} listings marked as already seen. "
               f"From now on you'll only hear about genuinely new ones.")
+        return
+
+    if args.status:
+        stats: dict = {}
+        hits = run_check(cfg, store, notify=False, dump=args.dump, stats=stats)
+        if state:
+            store.export_keys(state, args.prune_days)
+        broken = [n for n, d in stats.items() if d["parsed"] == 0]
+        subject = cfg["email"].get("subject_prefix", "[huurbot]") + " running"
+        if broken:
+            subject += f" - {len(broken)} site{'s' if len(broken) > 1 else ''} broken"
+        elif hits:
+            subject += f" - {len(hits)} new"
+        text = "\n".join(f"{n}: {d['parsed']} listings {d['problem']}".rstrip()
+                          for n, d in sorted(stats.items()))
+        try:
+            send_email(cfg, subject, build_status_html(stats, hits, store, cfg), text)
+            print("Status email sent.")
+        except Exception as exc:
+            log.error("could not send status email: %s", exc)
+            return
         return
 
     if args.once:
